@@ -2,6 +2,7 @@ from collections import Counter, deque
 from config import *
 from physics import *
 
+
 class BondManager:
     def __init__(self):
         self.bonds = set()
@@ -25,14 +26,12 @@ class BondManager:
                 if frozenset({atom_i.id, atom_j.id}) in self.bonds:
                     continue
 
-                # Compute bond formation threshold
+                # Bond formation threshold using Lorentz-Berthelot mixing
                 sigma_ij = (atom_i.sigma + atom_j.sigma) / 2
-                r_form = sigma_ij * config.bonding_form_factor
+                r_form = sigma_ij * bonding_form_factor
 
-                # Compute distance
+                # Compute distance and form bond if close enough
                 r = np.linalg.norm(atom_j.pos - atom_i.pos)
-
-                # Form bond if close enough
                 if r < r_form:
                     self.form_bond(atom_i, atom_j)
 
@@ -42,23 +41,26 @@ class BondManager:
         atom_j.bonds.append(atom_i)
         self.bonds.add(frozenset({atom_i.id, atom_j.id}))
 
-        # Mass weighted energy dissipation
+        # Mass-weighted energy dissipation — simulates exothermic bonding
         v_rel = atom_i.vel - atom_j.vel
         total_mass = atom_i.mass + atom_j.mass
-        delta_v = config.dissipation * v_rel
+        delta_v = dissipation * v_rel  # fixed — was config.dissipation
 
         atom_i.vel -= (atom_j.mass / total_mass) * delta_v
         atom_j.vel += (atom_i.mass / total_mass) * delta_v
 
-        # Flash event at bond midpoint
+        # Record flash effect at bond midpoint
         midpoint = (atom_i.pos + atom_j.pos) / 2
         self.flash_events.append((midpoint.copy(), 0))
 
     def break_bond(self, atom_i, atom_j):
-        # Remove atom 
+        # Remove each from the other's bond list
         atom_i.bonds.remove(atom_j)
         atom_j.bonds.remove(atom_i)
+
+        # Remove pair from bond set — discard avoids KeyError if missing
         self.bonds.discard(frozenset({atom_i.id, atom_j.id}))
+
 
 def detect_molecules(atoms):
     visited = set()
@@ -68,7 +70,7 @@ def detect_molecules(atoms):
         if atom.id in visited:
             continue
 
-        # BFS to collect connected component
+        # BFS to collect connected component (one molecule)
         component = []
         queue = deque([atom])
 
@@ -85,13 +87,11 @@ def detect_molecules(atoms):
                 if neighbour.id not in visited:
                     queue.append(neighbour)
 
-        # Count elements in this molecule
+        # Count elements in this component
         counts = Counter(a.element for a in component)
 
-        # Create canonical key
+        # Look up molecule name from config
         key = frozenset(counts.items())
-
-        # Convert to readable chemical formula
         name = known_molecules.get(key, 'unknown')
 
         molecule_counts[name] += 1
